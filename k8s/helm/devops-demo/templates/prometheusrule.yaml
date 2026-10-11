@@ -1,0 +1,41 @@
+{{- if .Values.monitoring.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ .Chart.Name }}-alerts
+  labels:
+    app: {{ .Chart.Name }}
+spec:
+  groups:
+    - name: {{ .Chart.Name }}.rules
+      rules:
+        - alert: DevopsDemoHighCPU
+          expr: |
+            sum(rate(container_cpu_usage_seconds_total{namespace="{{ .Release.Namespace }}", pod=~"{{ .Chart.Name }}-.*", container="app"}[5m])) by (pod)
+            /
+            sum(kube_pod_container_resource_limits{namespace="{{ .Release.Namespace }}", pod=~"{{ .Chart.Name }}-.*", resource="cpu"}) by (pod)
+            > 0.8
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High CPU on {{`{{ $labels.pod }}`}}"
+            description: "Pod {{`{{ $labels.pod }}`}} has used more than 80% of its CPU limit for 5 minutes."
+
+        - alert: DevopsDemoPodRestarting
+          expr: increase(kube_pod_container_status_restarts_total{namespace="{{ .Release.Namespace }}", pod=~"{{ .Chart.Name }}-.*"}[15m]) > 2
+          labels:
+            severity: critical
+          annotations:
+            summary: "Pod {{`{{ $labels.pod }}`}} is restarting"
+            description: "Pod {{`{{ $labels.pod }}`}} restarted more than 2 times in 15 minutes."
+
+        - alert: DevopsDemoDown
+          expr: up{job="{{ .Chart.Name }}"} == 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "{{ .Chart.Name }} target is down"
+            description: "Prometheus cannot scrape {{`{{ $labels.pod }}`}} for 2 minutes."
+{{- end }}
